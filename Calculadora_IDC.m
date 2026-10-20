@@ -14,105 +14,112 @@
 
 %}
 
+clear; clc; close all;
+opcionesGraficas;
 
-function Calculadora_IDC()
-    % 1. Crear la ventana principal (UI Figure)
-    fig = uifigure('Name', 'Calculadora IDC', 'Position', [500 150 520 580]);
+%% Variables de diseño
+Z0 = 50;
+f = 3.5e9;
+w = 2*pi*f;
+VR = linspace(0, 15, 10001);
+R_par_C = 0.2; % cambiar dependiendo del valor deseado
+MIN_RANGO_FASE_DEG = 300; % Límite mínimo de fase para la FoM
+
+%% Varactor (descomentar el que se desee utilizar)
+%[Zvar] = SMV_1236_079LF_ideal(VR, f);
+[Zvar] = SMV_1236_079LF_real(VR, f);
+
+%% Cálculo X_add
+X_vector = -50:0.01:50;
+vector_rango_fase = zeros(size(X_vector));
+vector_min_mod = zeros(size(X_vector));
+
+for k = 1:length(X_vector)
+    X = X_vector(k);
     
-    % 2. Crear los componentes visuales
-    % --- Constante Dieléctrica (er) ---
-    uilabel(fig, 'Text', 'Constante Dieléctrica del Sustrato (er):', 'Position', [50 510 350 22]);
-    sliderEr = uislider(fig, 'Position', [50 470 280 3], 'Limits', [1 15], 'Value', 3.5);
-    editEr   = uieditfield(fig, 'numeric', 'Position', [360 475 90 22], 'Value', 3.5, 'Limits', [1 15]);
+    % INCORPORAMOS LA RESISTENCIA PARÁSITA R_par_C
+    Z_add = R_par_C + 1j * X; 
     
-    % --- Número de dedos (N) ---
-    uilabel(fig, 'Text', 'Número de dedos (N):', 'Position', [50 415 350 22]);
-    sliderN = uislider(fig, 'Position', [50 375 280 3], 'Limits', [2 30], 'Value', 6);
-    editN   = uieditfield(fig, 'numeric', 'Position', [360 380 90 22], 'Value', 6, 'Limits', [2 30], 'RoundFractionalValues', 'on');
+    % Varactor en paralelo a Z_add
+    Z_in = (Z_add .* Zvar) ./ (Z_add + Zvar);
     
-    % --- Longitud del dedo (L) en mm ---
-    uilabel(fig, 'Text', 'Longitud de dedos (L) en mm:', 'Position', [50 320 350 22]);
-    sliderL = uislider(fig, 'Position', [50 280 280 3], 'Limits', [0.1 10], 'Value', 2.2);
-    editL   = uieditfield(fig, 'numeric', 'Position', [360 285 90 22], 'Value', 2.2, 'Limits', [0.1 10]);
+    % Coeficiente de reflexión
+    Coef_reflexion = (Z_in - Z0) ./ (Z_in + Z0);
     
-    % --- Ancho del dedo (W) en mm ---
-    uilabel(fig, 'Text', 'Ancho de dedos (W) en mm:', 'Position', [50 225 350 22]);
-    sliderW = uislider(fig, 'Position', [50 185 280 3], 'Limits', [0.05 2], 'Value', 0.2);
-    editW   = uieditfield(fig, 'numeric', 'Position', [360 190 90 22], 'Value', 0.2, 'Limits', [0.05 2]);
+    % Fase coeficiente de reflexión
+    fase = rad2deg(unwrap(angle(Coef_reflexion)));
     
-    % --- Separación entre dedos (S) en mm ---
-    uilabel(fig, 'Text', 'Separación entre dedos (S) en mm:', 'Position', [50 130 350 22]);
-    sliderS = uislider(fig, 'Position', [50 90 280 3], 'Limits', [0.05 2], 'Value', 0.15);
-    editS   = uieditfield(fig, 'numeric', 'Position', [360 95 90 22], 'Value', 0.15, 'Limits', [0.05 2]);
-    
-    % --- Etiqueta de Resultado ---
-    lblResultado = uilabel(fig, 'Text', 'Capacidad: 0.1292 pF', ...
-                          'Position', [50 25 400 40], ...
-                          'FontSize', 22, 'FontWeight', 'bold', 'FontColor', [0 0.45 0.74]);
-                          
-    % 3. Configurar sincronización bidireccional y cálculo
-    sliderEr.ValueChangingFcn = @(src, event) actualizarDesdeSlider(editEr, event.Value);
-    sliderN.ValueChangingFcn  = @(src, event) actualizarDesdeSlider(editN, round(event.Value));
-    sliderL.ValueChangingFcn  = @(src, event) actualizarDesdeSlider(editL, event.Value);
-    sliderW.ValueChangingFcn  = @(src, event) actualizarDesdeSlider(editW, event.Value);
-    sliderS.ValueChangingFcn  = @(src, event) actualizarDesdeSlider(editS, event.Value);
-    
-    sliderN.ValueChangedFcn   = @(src, event) finalSyncN(sliderN, editN);
-    editEr.ValueChangedFcn = @(src, event) actualizarDesdeEdit(sliderEr, src.Value);
-    editN.ValueChangedFcn  = @(src, event) actualizarDesdeEditN(sliderN, editN);
-    editL.ValueChangedFcn  = @(src, event) actualizarDesdeEdit(sliderL, src.Value);
-    editW.ValueChangedFcn  = @(src, event) actualizarDesdeEdit(sliderW, src.Value);
-    editS.ValueChangedFcn  = @(src, event) actualizarDesdeEdit(sliderS, src.Value);
-    
-    % =====================================================================
-    % FUNCIONES DE LOGICA INTERNA
-    % =====================================================================
-    function actualizarDesdeSlider(editCtrl, val)
-        editCtrl.Value = val;
-        calcular_y_mostrar();
-    end
-    
-    function actualizarDesdeEdit(sliderCtrl, val)
-        sliderCtrl.Value = val;
-        calcular_y_mostrar();
-    end
-    
-    function actualizarDesdeEditN(sliderCtrl, editCtrl)
-        val = round(editCtrl.Value);
-        editCtrl.Value = val;
-        sliderCtrl.Value = val;
-        calcular_y_mostrar();
-    end
-    
-    function finalSyncN(sliderCtrl, editCtrl)
-        val = round(sliderCtrl.Value);
-        sliderCtrl.Value = val;
-        editCtrl.Value = val;
-        calcular_y_mostrar();
-    end
-    
-    function calcular_y_mostrar()
-        er_val = editEr.Value;
-        N    = editN.Value;
-        L_m  = editL.Value * 1e-3;
-        W_mm = editW.Value;
-        S_mm = editS.Value;
-        
-        e0 = 8.854e-12;
-        ere = (er_val + 1) / 2;
-        
-        k0 = S_mm / (S_mm + 2 * W_mm);
-        k0_prime = sqrt(1 - k0^2);
-        
-        if k0 <= 0.707
-            ratio = pi / log(2 * (1 + sqrt(k0_prime)) / (1 - sqrt(k0_prime)));
-        else
-            ratio = (1 / pi) * log(2 * (1 + sqrt(k0)) / (1 - sqrt(k0)));
-        end
-        
-        C_F = (N - 1) * L_m * e0 * ere * ratio;
-        C_pF = C_F * 1e12;
-        
-        lblResultado.Text = sprintf('Capacidad: %.4f pF', C_pF);
-    end
+    % Rango de fase total y módulo mínimo
+    vector_rango_fase(k) = max(fase) - min(fase);
+    vector_min_mod(k) = min(abs(Coef_reflexion));
 end
+
+%% Optimización Fase
+[max_rango_fase, idx_opt] = max(vector_rango_fase);
+mejor_X = X_vector(idx_opt);
+
+%% Cálculo de FoM (deg/dB) limitada
+mask_valida = vector_rango_fase >= MIN_RANGO_FASE_DEG;
+vec_min_mod_safe = max(vector_min_mod, 1e-6);
+perdidas_max_dB = -20 * log10(vec_min_mod_safe);
+perdidas_max_dB(perdidas_max_dB < 1e-4) = 1e-4;
+
+vector_fom = zeros(size(X_vector));
+vector_fom(mask_valida) = vector_rango_fase(mask_valida) ./ perdidas_max_dB(mask_valida);
+
+[max_fom, idx_opt_fom] = max(vector_fom);
+mejor_X_fom = X_vector(idx_opt_fom);
+
+%% Resultados
+
+% 1. Gráfica de Rango de Fase
+figure('Name', 'Rango de Fase vs X_add', 'NumberTitle', 'off');
+plot(X_vector, vector_rango_fase);
+grid on;
+title('Rango de Fase vs X_{add}');
+xlabel('X_{add} [\Omega]');
+ylabel('\Delta\angle\Gamma [^\circ]');
+xline(mejor_X, '--r', sprintf('Max Fase: %.2f \\Omega', mejor_X), 'LineWidth', 2, 'FontSize', 12, 'FontWeight','bold','LabelVerticalAlignment', 'bottom');
+
+% 2. Gráfica de FoM limitada
+figure('Name', 'FoM vs X_add', 'NumberTitle', 'off');
+hold on; grid on;
+
+% Línea principal con el estilo exacto
+plot(X_vector, vector_fom, '-d', 'LineWidth', 4, 'MarkerSize', 4, ...
+    'Color', [0.85 0.33 0.1], 'HandleVisibility', 'off');
+
+title(sprintf('FoM [^\\circ/dB] (\\Delta\\angle\\Gamma \\geq %d^\\circ, f = %.1f GHz, Z_0 = %d \\Omega)', MIN_RANGO_FASE_DEG, f/1e9, Z0));
+xlabel('X_{add} [\Omega]');
+ylabel('FoM [^\circ/dB]');
+
+% Punto máximo y leyenda
+if any(mask_valida)
+    plot(mejor_X_fom, max_fom, 'o', 'MarkerSize', 8, ...
+        'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k', ...
+        'DisplayName', sprintf('Max: X_{add} = %.1f \\Omega (%.1f ^\\circ/dB)', mejor_X_fom, max_fom));
+    legend('show', 'Location', 'best');
+end
+hold off;
+
+%% Consola
+fprintf('------------------------------------------------\n');
+fprintf('Reactancia óptima añadida (Fase max): %.2f Ohm\n', mejor_X);
+fprintf('Rango de fase conseguido:         %.2f Grados\n', max_rango_fase);
+if any(mask_valida)
+    fprintf('Reactancia óptima añadida (FoM max): %.2f Ohm\n', mejor_X_fom);
+    fprintf('FoM máxima conseguida:            %.2f º/dB\n', max_fom);
+end
+fprintf('------------------------------------------------\n');
+fprintf('COMPONENTE A %.2f GHz (Optimizado para Fase):\n', f/1e9);
+
+if mejor_X > 0
+    L_add = mejor_X / w;
+    fprintf('   Añadir BOBINA en paralelo:     %.2f nH\n', L_add * 1e9);
+elseif mejor_X < 0
+    C_add = -1 / (w * mejor_X);
+    fprintf('   Añadir CONDENSADOR en paralelo: %.2f pF\n', C_add * 1e12);
+else
+    fprintf('   Cortocircuito (X = 0)\n');
+end
+fprintf('------------------------------------------------\n');

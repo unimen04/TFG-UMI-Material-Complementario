@@ -8,9 +8,10 @@
 
     Este calcula la reactancia en paralelo a añadir al varactor (pudiendo
     elegir el modelo del mismo) para aumentar el valor del desfase. Con él
-    se evalúan todo un rango de X_add, dando el óptimo para esta tarea
+    se evalúan todo un rango de X_add, dando el óptimo para esta tarea.
 
 %}
+
 
 clear; clc; close all;
 opcionesGraficas;
@@ -20,17 +21,20 @@ Z0 = 50;
 f = 3.5e9;
 w = 2*pi*f;
 VR = linspace(0, 15, 10001);
+R_par_C = 0.2; % Resistencia parásita del condensador SMD
 
-%% Varactor (descomentar el que se desee utilizar)
+%% Varactor
 %[Zvar] = SMV_1236_079LF_ideal(VR, f);
 [Zvar] = SMV_1236_079LF_real(VR, f);
+
 %% Cálculo X_add
 X_vector = -50:0.01:50;
 vector_rango_fase = zeros(size(X_vector));
 
 for k = 1:length(X_vector)
     X = X_vector(k);
-    Z_add = 1j * X;
+    
+    Z_add = R_par_C + 1j * X; 
     
     % Varactor en paralelo a Z_add
     Z_in = (Z_add .* Zvar) ./ (Z_add + Zvar);
@@ -40,12 +44,10 @@ for k = 1:length(X_vector)
     
     % Fase coeficiente de reflexión
     fase = rad2deg(unwrap(angle(Coef_reflexion)));
-    
-    % Rango de fase total
     vector_rango_fase(k) = max(fase) - min(fase);
 end
 
-%% Optimización
+%% Optimización Fase
 [max_rango_fase, idx_opt] = max(vector_rango_fase);
 mejor_X = X_vector(idx_opt);
 
@@ -56,14 +58,14 @@ grid on;
 title('Rango de Fase vs X_{add}');
 xlabel('X_{add} [\Omega]');
 ylabel('\Delta\angle\Gamma [^\circ]');
-xline(mejor_X, '--r', sprintf('%.2f \\Omega', mejor_X), 'LineWidth', 3, 'FontSize', 18, 'FontWeight','bold','LabelVerticalAlignment', 'bottom');
+xline(mejor_X, '--r', sprintf('Max Fase: %.2f \\Omega', mejor_X), 'LineWidth', 2, 'FontSize', 12, 'FontWeight','bold','LabelVerticalAlignment', 'bottom');
 
 %% Consola
 fprintf('------------------------------------------------\n');
-fprintf('Reactancia óptima añadida (X_add): %.2f Ohm\n', mejor_X);
+fprintf('Reactancia óptima añadida (Fase max): %.2f Ohm\n', mejor_X);
 fprintf('Rango de fase conseguido:         %.2f Grados\n', max_rango_fase);
 fprintf('------------------------------------------------\n');
-fprintf('COMPONENTE A %.2f GHz:\n', f/1e9);
+fprintf('COMPONENTE A %.2f GHz (Optimizado para Fase):\n', f/1e9);
 
 if mejor_X > 0
     L_add = mejor_X / w;
@@ -75,4 +77,3 @@ else
     fprintf('   Cortocircuito (X = 0)\n');
 end
 fprintf('------------------------------------------------\n');
-
